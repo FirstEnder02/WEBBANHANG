@@ -1,78 +1,76 @@
 <?php
 session_start();
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+// =============================================
+// FRONT CONTROLLER - WEBBANHANG
+// Đặt file này cùng cấp với thư mục app/
+// =============================================
 
-// Require các file cần thiết
-require_once 'app/config/database.php';
-require_once 'app/helpers/SessionHelper.php';
+// Fix working directory để các include 'app/views/...' hoạt động đúng
+chdir(__DIR__);
 
-// Lấy URL từ request
-$url = $_GET['url'] ?? '';
-$url = rtrim($url, '/');
-$url = filter_var($url, FILTER_SANITIZE_URL);
-$url = explode('/', $url);
+define('BASE_URL', '/webbanhang');
+define('ROOT_PATH', __DIR__);
 
-// Xác định tên controller
-$controllerName = isset($url[0]) && $url[0] !== '' ? ucfirst($url[0]) . 'Controller' : 'DefaultController';
+// Load database config
+require_once ROOT_PATH . '/app/config/database.php';
 
-// Xác định tên action
-$action = isset($url[1]) && $url[1] !== '' ? $url[1] : 'index';
+// ---- Parse URL ----
+$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-// Đường dẫn đến controller
-$controllerPath = 'app/controllers/' . $controllerName . '.php';
+// Cắt bỏ phần /webbanhang khỏi URI
+if (strpos($requestUri, BASE_URL) === 0) {
+    $requestUri = substr($requestUri, strlen(BASE_URL));
+}
 
-// Kiểm tra nếu file controller tồn tại
-if (!file_exists($controllerPath)) {
+$url      = trim($requestUri, '/');
+$urlParts = ($url !== '') ? explode('/', $url) : [];
+
+// ---- Xác định Controller / Action / Params ----
+$controllerName = isset($urlParts[0]) && $urlParts[0] !== '' ? $urlParts[0] : 'default';
+$actionName     = isset($urlParts[1]) && $urlParts[1] !== '' ? $urlParts[1] : 'index';
+$params         = array_slice($urlParts, 2);
+
+// Thử 2 kiểu tên: giữ nguyên hoa/thường và lowercase toàn bộ
+$candidates = array_unique([
+    ucfirst($controllerName) . 'Controller',
+    ucfirst(strtolower($controllerName)) . 'Controller',
+]);
+
+$loaded = false;
+
+foreach ($candidates as $controllerClass) {
+    $controllerFile = ROOT_PATH . '/app/controllers/' . $controllerClass . '.php';
+
+    if (file_exists($controllerFile)) {
+        require_once $controllerFile;
+
+        if (class_exists($controllerClass)) {
+            $controller = new $controllerClass();
+
+            if (method_exists($controller, $actionName)) {
+                call_user_func_array([$controller, $actionName], $params);
+            } else {
+                http_response_code(404);
+                echo "<h2>404 - Action not found</h2>";
+                echo "<p>Controller: <strong>{$controllerClass}</strong></p>";
+                echo "<p>Action: <strong>{$actionName}</strong></p>";
+            }
+
+            $loaded = true;
+            break;
+        }
+    }
+}
+
+if (!$loaded) {
     http_response_code(404);
-    die('Controller not found: ' . htmlspecialchars($controllerName));
+    echo "<h2>404 - Controller not found</h2>";
+    echo "<p>Không tìm thấy controller cho: <strong>" . htmlspecialchars($controllerName) . "</strong></p>";
+    echo "<p>Đã thử tìm:</p><ul>";
+    foreach ($candidates as $c) {
+        echo "<li><code>app/controllers/{$c}.php</code></li>";
+    }
+    echo "</ul>";
 }
-
-require_once $controllerPath;
-
-// Kiểm tra nếu lớp controller tồn tại
-if (!class_exists($controllerName)) {
-    http_response_code(500);
-    die('Controller class not found: ' . htmlspecialchars($controllerName));
-}
-
-// Tạo đối tượng controller
-$controller = new $controllerName();
-
-// Kiểm tra nếu action tồn tại trong controller
-if (!method_exists($controller, $action)) {
-    http_response_code(404);
-    die('Action not found: ' . htmlspecialchars($action));
-}
-
-// Lấy các tham số còn lại
-
-$params = array_slice($url, 2);
-
-// Gọi phương thức với tham số (xử lý lỗi thiếu tham số)
-try {
-    call_user_func_array([$controller, $action], $params);
-} catch (ArgumentCountError $e) {
-    http_response_code(400);
-    die('Invalid parameters for action: ' . htmlspecialchars($action));
-} catch (Exception $e) {
-    http_response_code(500);
-    die('An error occurred: ' . $e->getMessage());
-}
-
-// require_once 'app/controllers/AccountController.php'; // Gọi controller cần thiết
-
-// if (isset($_GET['action'])) {
-//     $action = $_GET['action'];
-
-//     // Tất cả hành động liên quan đến Account
-//     if ($action === 'changePassword' || $action === 'login' || $action === 'register') {
-//         $controller = new AccountController();
-
-//         if (method_exists($controller, $action)) {
-//             $controller->{$action}(); // Gọi action trong controller
-//         } else {
-//             echo "Hành động không tồn tại.";
-//         }
-//     } else {
-//         echo "Hành động không hợp lệ.";
-//     }
-// }

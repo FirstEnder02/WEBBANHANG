@@ -1,4 +1,13 @@
+Options -Indexes
+
 RewriteEngine On
+
+# Đặt base path đúng với subfolder
+RewriteBase /webbanhang/
+
+# Nếu request là file hoặc thư mục thật (css, js, images...) thì bỏ qua
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
+
+# Tất cả request còn lại → index.php
+RewriteRule ^(.*)$ index.php [QSA,L]
